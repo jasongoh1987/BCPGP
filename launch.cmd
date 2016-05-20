@@ -1,0 +1,1 @@
+@start jre\bin\javaw -classpath lib\bcpg-jdk15on-147.jar;lib\BCPGP_jarbcprov-jdk15on-147.jar;lib\commons-io-2.4.jar;lib\hlb-dd-pgptools.jar com.fuzion.tools.pgp.ui.GUIForm

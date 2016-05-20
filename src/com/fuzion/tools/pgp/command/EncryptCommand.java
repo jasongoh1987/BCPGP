@@ -1,9 +1,10 @@
-package com.fuzion.tools.pgp;
+package com.fuzion.tools.pgp.command;
 
 import java.io.Console;
 import java.io.File;
 import java.security.Security;
 
+import com.fuzion.tools.pgp.BCPGPEncryptor;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 public class EncryptCommand {

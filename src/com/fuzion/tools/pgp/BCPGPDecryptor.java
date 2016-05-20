@@ -1,20 +1,13 @@
 package com.fuzion.tools.pgp;
 
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.EOFException;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 
 import org.apache.commons.io.Charsets;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.io.input.CharSequenceInputStream;
 import org.bouncycastle.openpgp.PGPCompressedData;
 import org.bouncycastle.openpgp.PGPEncryptedDataList;
 import org.bouncycastle.openpgp.PGPException;
@@ -44,6 +37,7 @@ public class BCPGPDecryptor {
 	private String privateKeyFilePath;
 	private String password = "";
 	private byte[] signingPublicKey;
+    private byte[] privateKey;
 
 	private boolean isSigned;
 
@@ -79,6 +73,18 @@ public class BCPGPDecryptor {
 		IOUtils.closeQuietly(fin);
 	}
 
+    /**
+     * Set private key
+     *
+     * @param privateKeyString private key string
+     * @throws IOException
+     */
+    public void setPrivateKey(String privateKeyString) throws IOException {
+        InputStream keyIn = new ByteArrayInputStream(privateKeyString.getBytes(StandardCharsets.UTF_8));
+        privateKey = IOUtils.toByteArray(keyIn);
+        IOUtils.closeQuietly(keyIn);
+    }
+
 	/**
 	 * Set signing public key string
 	 * 
@@ -107,9 +113,20 @@ public class BCPGPDecryptor {
 	 * @param privateKeyFilePath
 	 *            Private key file path
 	 */
-	public void setPrivateKeyFilePath(String privateKeyFilePath) {
-		this.privateKeyFilePath = privateKeyFilePath;
-	}
+	public void setPrivateKeyFilePath(String privateKeyFilePath) throws IOException {
+        this.privateKeyFilePath = privateKeyFilePath;
+        InputStream keyIn = null;
+        try {
+            keyIn = new FileInputStream(new File(privateKeyFilePath));
+            privateKey = IOUtils.toByteArray(keyIn);
+        }
+        catch(Exception e){
+            throw e;
+        }
+        finally {
+            IOUtils.closeQuietly(keyIn);
+        }
+    }
 
 	/**
 	 * Get password to open private key
@@ -230,12 +247,11 @@ public class BCPGPDecryptor {
 	/**
 	 * Decrypt
 	 * 
-	 * @param in
-	 *            Input stream for ciphertext
+	 * @param cipherIn Input stream for ciphertext
 	 * @return Input stream for plain text
 	 * @throws Exception
 	 */
-	public InputStream decrypt(InputStream in) throws Exception {
+	public InputStream decrypt(InputStream cipherIn) throws Exception {
 		byte[] bytes = null;
 		InputStream is = null;
 		InputStream keyIn = null;
@@ -244,9 +260,10 @@ public class BCPGPDecryptor {
 		InputStream decodedSigningPublicKey = null;
 
 		try {
-			keyIn = new FileInputStream(new File(privateKeyFilePath));
+            keyIn = new ByteInputStream(privateKey, privateKey.length);
+
 			char[] passwd = password.toCharArray();
-			decodedFileIn = PGPUtil.getDecoderStream(in);
+			decodedFileIn = PGPUtil.getDecoderStream(cipherIn);
 
 			PGPObjectFactory pgpF = new PGPObjectFactory(decodedFileIn, new BcKeyFingerprintCalculator());
 			PGPEncryptedDataList enc;
@@ -259,6 +276,10 @@ public class BCPGPDecryptor {
 				enc = (PGPEncryptedDataList) pgpF.nextObject();
 			}
 
+            if( enc == null ){
+                throw new PGPException("Please select a valid file for decryption.");
+            }
+
 			// find the secret key
 			Iterator<?> it = enc.getEncryptedDataObjects();
 			PGPPrivateKey sKey = null;
@@ -269,7 +290,8 @@ public class BCPGPDecryptor {
 			}
 
 			if (sKey == null) {
-				throw new IllegalArgumentException("secret key for message not found.");
+//				throw new IllegalArgumentException("secret key for message not found.");
+                throw new IllegalArgumentException("Please select a valid file for decryption.");
 			}
 
 			clear = pbe.getDataStream(new BcPublicKeyDataDecryptorFactory(sKey));
@@ -309,7 +331,7 @@ public class BCPGPDecryptor {
 
 				if (pbe.isIntegrityProtected()) {
 					if (!pbe.verify()) {
-						throw new PGPException("message failed integrity check");
+						throw new PGPException("File failed integrity check");
 					}
 				}
 
@@ -332,7 +354,7 @@ public class BCPGPDecryptor {
 
 				}
 			} else {
-				throw new PGPException("message is not a simple encrypted file - type unknown.");
+				throw new PGPException("Please select a valid file for decryption.");
 			}
 		} finally {
 			IOUtils.closeQuietly(is);
@@ -340,7 +362,7 @@ public class BCPGPDecryptor {
 			IOUtils.closeQuietly(decodedFileIn);
 			IOUtils.closeQuietly(clear);
 			IOUtils.closeQuietly(decodedSigningPublicKey);
-			IOUtils.closeQuietly(in);
+			IOUtils.closeQuietly(cipherIn);
 		}
 		return new ByteArrayInputStream(bytes);
 	}

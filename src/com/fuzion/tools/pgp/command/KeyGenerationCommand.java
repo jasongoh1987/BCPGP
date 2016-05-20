@@ -1,8 +1,10 @@
-package com.fuzion.tools.pgp;
+package com.fuzion.tools.pgp.command;
 
 import java.io.Console;
 import java.io.File;
 import java.security.KeyPair;
+
+import com.fuzion.tools.pgp.BCPGPKeyGenTools;
 import org.bouncycastle.openpgp.PGPKeyRingGenerator;
 
 public class KeyGenerationCommand {

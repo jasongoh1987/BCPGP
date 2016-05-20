@@ -1,16 +1,13 @@
 package com.fuzion.tools.pgp;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.security.NoSuchProviderException;
 import java.security.SecureRandom;
 import java.security.SignatureException;
 import java.util.Iterator;
 
+import com.sun.xml.internal.messaging.saaj.util.ByteInputStream;
 import org.apache.commons.io.IOUtils;
 import org.bouncycastle.bcpg.ArmoredOutputStream;
 import org.bouncycastle.openpgp.PGPCompressedData;
@@ -54,6 +51,7 @@ public class BCPGPEncryptor {
 	private PGPPublicKey publicKey;
 	private String signingPrivateKeyFilePath;
 	private String signingPrivateKeyPassword;
+    private byte[] signingPrivateKey;
 
 	public BCPGPEncryptor() {
 		messageDigestAlgorithm = PGPUtil.SHA1;
@@ -82,6 +80,19 @@ public class BCPGPEncryptor {
 		this.signingPrivateKeyPassword = signingPrivateKeyPassword;
 	}
 
+    /**
+     * Set signing private key string
+     *
+     * @param signingPrivateKeyString
+     *            Signing private key string
+     * @throws IOException
+     */
+    public void setSigningPrivateKeyString(String signingPrivateKeyString) throws IOException {
+        InputStream sin = new ByteArrayInputStream(signingPrivateKeyString.getBytes(StandardCharsets.UTF_8));
+        signingPrivateKey = IOUtils.toByteArray(sin);
+        IOUtils.closeQuietly(sin);
+    }
+
 	/**
 	 * Get signing private key file path
 	 * 
@@ -91,13 +102,17 @@ public class BCPGPEncryptor {
 		return signingPrivateKeyFilePath;
 	}
 
-	/**
-	 * Set signing private key file path
-	 * 
-	 * @return signing private key file path
-	 */
-	public void setSigningPrivateKeyFilePath(String signingPrivateKeyFilePath) {
+    /**
+     * Set signing private key file path
+     *
+     * @param signingPrivateKeyFilePath signing private key file path
+     * @throws IOException
+     */
+	public void setSigningPrivateKeyFilePath(String signingPrivateKeyFilePath) throws IOException {
 		this.signingPrivateKeyFilePath = signingPrivateKeyFilePath;
+        InputStream keyInputStream = new FileInputStream(new File(signingPrivateKeyFilePath));
+        signingPrivateKey = IOUtils.toByteArray(keyInputStream);
+        IOUtils.closeQuietly(keyInputStream);
 	}
 
 	/**
@@ -335,7 +350,7 @@ public class BCPGPEncryptor {
 		try {
 			PGPSignatureGenerator sg = null;
 			if (isSigning) {
-				InputStream keyInputStream = new FileInputStream(new File(signingPrivateKeyFilePath));
+				InputStream keyInputStream = new ByteInputStream(signingPrivateKey, signingPrivateKey.length);
 				PGPSecretKey secretKey = BCPGPUtils.findSecretKey(keyInputStream);
 				PGPDigestCalculatorProvider digCalPro = new BcPGPDigestCalculatorProvider();
 				PBESecretKeyDecryptor dec = new BcPBESecretKeyDecryptorBuilder(digCalPro)

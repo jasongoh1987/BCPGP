@@ -199,7 +199,7 @@ public abstract class BCPGPUtils {
 	public static PGPPrivateKey findPrivateKey(InputStream privateKeyInputStream, long keyID, char[] pass)
 			throws IOException, PGPException, NoSuchProviderException {
 		PGPSecretKeyRingCollection pgpSec = new PGPSecretKeyRingCollection(
-				PGPUtil.getDecoderStream(privateKeyInputStream));//, new BcKeyFingerprintCalculator());
+				PGPUtil.getDecoderStream(privateKeyInputStream));
 
 		PGPSecretKey pgpSecKey = pgpSec.getSecretKey(keyID);
 
@@ -208,7 +208,15 @@ public abstract class BCPGPUtils {
 		}
 		PGPDigestCalculatorProvider digCalPro = new BcPGPDigestCalculatorProvider();
 		PBESecretKeyDecryptor dec = new BcPBESecretKeyDecryptorBuilder(digCalPro).build(pass);
-		return pgpSecKey.extractPrivateKey(dec);
+        PGPPrivateKey pgpPrivateKey = null;
+        try {
+            pgpPrivateKey = pgpSecKey.extractPrivateKey(dec);
+        }
+        catch(PGPException e){
+            throw new PGPException("Invalid password. Please enter the correct password.");
+        }
+
+        return pgpPrivateKey;
 	}
 
 	/**

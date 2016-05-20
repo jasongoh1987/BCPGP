@@ -1,9 +1,10 @@
-package com.fuzion.tools.pgp;
+package com.fuzion.tools.pgp.command;
 
 import java.io.Console;
 import java.io.File;
 import java.security.Security;
 
+import com.fuzion.tools.pgp.BCPGPDecryptor;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 public class DecryptCommand {
@@ -41,6 +42,8 @@ public class DecryptCommand {
 		console.printf("Please enter the password for the secret key : ");
 		char[] passwordChars = console.readPassword();
 		String passwordString = new String(passwordChars);
+		boolean fileExistBeforeDecrypt = false;
+		File decryptedFile = null;
 		
 		// decrypt file
 		try {
@@ -54,7 +57,8 @@ public class DecryptCommand {
 				decryptFileName = originalName.substring(0, originalName.length()-4);
 			else
 				decryptFileName = originalName + ".dec";
-			File decryptedFile = new File(decryptFileName);
+			decryptedFile = new File(decryptFileName);
+			fileExistBeforeDecrypt = decryptedFile.exists();
 			
 			decryptor.setSigningPublicKeyFilePath(publicKeyPath);
 			decryptor.decryptFile(file, decryptedFile);
@@ -67,8 +71,14 @@ public class DecryptCommand {
 			
 		} catch (Exception e) {
 			System.out.println("Failed to decrypt file. [" + e.toString() + "]");
+			
+			// If decrypt file not exist before decrypt, then clean up
+			if(!fileExistBeforeDecrypt){
+				if(decryptedFile != null && decryptedFile.exists()){
+					decryptedFile.delete();
+				}
+			}
 		}
-		
 		
 	}
 }
