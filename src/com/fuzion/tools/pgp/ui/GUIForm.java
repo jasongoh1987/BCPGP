@@ -4,17 +4,19 @@ import com.fuzion.tools.pgp.BCPGPDecryptor;
 import com.fuzion.tools.pgp.BCPGPEncryptor;
 import com.fuzion.tools.pgp.BCPGPKeyGenTools;
 import com.fuzion.tools.pgp.dialoginformation.*;
+import com.fuzion.tools.pgp.utils.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.bouncycastle.openpgp.PGPKeyRingGenerator;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.io.*;
 import java.security.KeyPair;
 import java.util.*;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 public class GUIForm {
     private JPanel panel1;
@@ -35,25 +37,42 @@ public class GUIForm {
     private JButton decryptOpenFileButton;
     private JTextField encryptedPathTextField;
     private JTextField decryptedPathTextField;
+    private JMenuBar menuBar;
+    private JMenuItem exportPublicKeyMenuItem;
+    private JMenuItem generateNewKeyMenuItem;
+    private JMenuItem viewPublicKeyMenuItem;
     private JFrame frame;
 
-    private JFileChooser fc = new JFileChooser();
+    private static final int ZIP_BUFFER = 2048;
+
+    private JFileChooser fileChooser = new JFileChooser();
+    private JFileChooser pathChooser = new JFileChooser();
+
+    private static final String imageFolder = "img";
+    private static final String iconFileName = "icon.png";
+
+    private static final String pubKeyFileName = "pub.key";
+    private static final String secKeyFileName = "sec.key";
+    private static final String hlbPubKeyFileName = "hlb_pub.key";
 
     private static final String APPLICATION_NAME = "HLB Direct Debit Encrpytion Tool";
-    private static final String PUB_KEY_PATH = "keys/hlb_pub.key";
+    private static final String DD_PUB_KEY_PATH = "keys" + File.separator + hlbPubKeyFileName;
     private static final String PRIVATE_KEY_PATH = "keys/sec.key";
     private static final String ENCRYPTION_EXT = ".enc";
     private static final String DECRYPT_DIR = "decrypted";
     private static final String ENCRYPT_DIR = "encrypted";
 
-    private String keysDir = System.getProperty("user.dir") + File.separator + "keys";
-    private File secKeyFile = new File(keysDir + File.separator + "sec.key");
-    private File pubKeyFile = new File(keysDir + File.separator + "pub.key");
+    private static final String keysDir = System.getProperty("user.dir") + File.separator + "keys";
+
+    private File secKeyFile = new File(keysDir + File.separator + secKeyFileName);
+    private File pubKeyFile = new File(keysDir + File.separator + pubKeyFileName);
 
     private String encryptedFilePath;
     private String decryptedFilePath;
 
     public GUIForm() {
+        pathChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+
         keyGenerateButton.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseReleased(MouseEvent e) {
@@ -67,6 +86,7 @@ public class GUIForm {
                         try {
                             keyGeneration(keyGenIdField.getText(), keyGenPasswordField.getPassword());
                             showInformationDialog(KeyGenerationDialogInformation.KEY_GENERATION_SUCCESS);
+                            validateMenuBar(GUIForm.this);
                             showKeyGenMenu(GUIForm.this);
                             showEncryptMenu(GUIForm.this);
                             showDecryptMenu(GUIForm.this);
@@ -104,9 +124,9 @@ public class GUIForm {
             public void mouseReleased(MouseEvent e) {
                 if (encryptFileChooseButton.isEnabled()) {
                     super.mouseReleased(e);
-                    int retval = fc.showOpenDialog(encryptFileChooseButton.getParent().getParent());
+                    int retval = fileChooser.showOpenDialog(frame);
                     if (retval == JFileChooser.APPROVE_OPTION) {
-                        File file = fc.getSelectedFile();
+                        File file = fileChooser.getSelectedFile();
                         encryptFilePathField.setText(file.getAbsolutePath());
                     }
                 }
@@ -118,9 +138,9 @@ public class GUIForm {
             public void mouseReleased(MouseEvent e) {
                 if (decryptFileChooseButton.isEnabled()) {
                     super.mouseClicked(e);
-                    int retval = fc.showOpenDialog(decryptFileChooseButton.getParent().getParent());
+                    int retval = fileChooser.showOpenDialog(frame);
                     if (retval == JFileChooser.APPROVE_OPTION) {
-                        File file = fc.getSelectedFile();
+                        File file = fileChooser.getSelectedFile();
                         decryptFilePathField.setText(file.getAbsolutePath());
                     }
                 }
@@ -171,29 +191,122 @@ public class GUIForm {
             }
         });
 
-        encryptPasswordField.addKeyListener(new KeyAdapter() {
+        encryptPasswordField.addActionListener(new ActionListener() {
             @Override
-            public void keyReleased(KeyEvent e) {
-                if (encryptPasswordField.isEnabled()) {
-                    super.keyReleased(e);
-                    if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                        validateAndEncrypt();
+            public void actionPerformed(ActionEvent e) {
+                if (encryptPasswordField.isEnabled() && encryptPasswordField.isFocusOwner()) {
+                    validateAndEncrypt();
+                }
+            }
+        });
+
+        decryptPasswordField.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (decryptPasswordField.isEnabled() && decryptPasswordField.isFocusOwner()) {
+                    validateAndDecrypt();
+                }
+            }
+        });
+
+        exportPublicKeyMenuItem.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                pathChooser.setCurrentDirectory(new File("." + File.separator + pubKeyFileName));
+                int retval = pathChooser.showOpenDialog(frame);
+                if (retval == JFileChooser.APPROVE_OPTION) {
+                    File file = pathChooser.getSelectedFile();
+                    try {
+                        if (file.isDirectory()) {
+                            file = new File(file.getAbsolutePath() + File.separator + pubKeyFileName);
+                        }
+
+                        FileUtils.copyFile(pubKeyFile, file);
+                        showInformationDialog(KeyGenerationDialogInformation.KEY_EXPORT_SUCCESS);
+
+                    } catch (IOException e1) {
+                        showExceptionDialog(e1);
                     }
                 }
             }
         });
 
-        decryptPasswordField.addKeyListener(new KeyAdapter() {
+        generateNewKeyMenuItem.addActionListener(new ActionListener() {
             @Override
-            public void keyReleased(KeyEvent e) {
-                if (decryptPasswordField.isEnabled()) {
-                    super.keyReleased(e);
-                    if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                        validateAndDecrypt();
-                    }
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    backupKey();
+                    removeKey();
+                    validateViewingMenu(GUIForm.this);
+                } catch (Exception e1) {
+                    showExceptionDialog(e1);
                 }
             }
         });
+
+        viewPublicKeyMenuItem.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Runtime rt = Runtime.getRuntime();
+                try {
+                    rt.exec("cmd /c notepad \"" + pubKeyFile.getAbsolutePath() + "\"");
+                } catch (IOException e1) {
+                    e1.printStackTrace();
+                    showErrorDialog(CommonDialogInformation.OS_NOT_SUPPORT);
+                }
+            }
+        });
+    }
+
+    private void removeKey() {
+        File f = new File(keysDir);
+        String files[] = f.list();
+
+        for (String file : files) {
+            if (file.endsWith(".key") && !file.endsWith(hlbPubKeyFileName)) {
+                new File(keysDir + File.separator + file).delete();
+            }
+        }
+    }
+
+    private void backupKey() throws Exception {
+        FileOutputStream dest = null;
+        ZipOutputStream out = null;
+        BufferedInputStream origin = null;
+        FileInputStream fi = null;
+        try {
+            dest = new FileOutputStream(keysDir + File.separator + "key_" + System.currentTimeMillis() + ".zip");
+            out = new ZipOutputStream(new
+                    BufferedOutputStream(dest));
+            //out.setMethod(ZipOutputStream.DEFLATED);
+            byte data[] = new byte[ZIP_BUFFER];
+            // get a list of files from current directory
+            File f = new File(keysDir);
+            String files[] = f.list();
+
+            for (String file : files) {
+                if (file.endsWith(".key") && !file.endsWith(hlbPubKeyFileName)) {
+                    fi = new FileInputStream(keysDir + File.separator + file);
+                    origin = new BufferedInputStream(fi, ZIP_BUFFER);
+                    ZipEntry entry = new ZipEntry(file);
+                    out.putNextEntry(entry);
+                    int count;
+                    while ((count = origin.read(data, 0,
+                            ZIP_BUFFER)) != -1) {
+                        out.write(data, 0, count);
+                    }
+                    origin.close();
+                }
+            }
+            out.close();
+        } catch (Exception e) {
+            throw e;
+        } finally {
+            IOUtils.closeQuietly(dest);
+            IOUtils.closeQuietly(out);
+            IOUtils.closeQuietly(origin);
+            IOUtils.closeQuietly(fi);
+        }
     }
 
     private void validateAndEncrypt() {
@@ -298,6 +411,14 @@ public class GUIForm {
         }
     }
 
+    private static void validateMenuBar(GUIForm guiForm) {
+        if (guiForm.secKeyFile.exists() && guiForm.pubKeyFile.exists()) {
+            guiForm.menuBar.setVisible(true);
+        } else {
+            guiForm.menuBar.setVisible(false);
+        }
+    }
+
     private void keyGeneration(String id, char[] password) throws Exception {
         File keysDirFile = new File(keysDir);
         if (!keysDirFile.exists()) {
@@ -362,7 +483,7 @@ public class GUIForm {
 
         BCPGPEncryptor encryptor = new BCPGPEncryptor();
         encryptor.setCheckIntegrity(true);
-        encryptor.setPublicKeyFilePath(PUB_KEY_PATH);
+        encryptor.setPublicKeyFilePath(DD_PUB_KEY_PATH);
         encryptor.setSigning(true);
         encryptor.setSigningPrivateKeyFilePath(PRIVATE_KEY_PATH);
 
@@ -398,7 +519,7 @@ public class GUIForm {
             decryptedFile = new File(file.getParentFile().getAbsolutePath() + File.separator + DECRYPT_DIR + File.separator + decryptFileName);
             fileExistBeforeDecrypt = decryptedFile.exists();
 
-            decryptor.setSigningPublicKeyFilePath(PUB_KEY_PATH);
+            decryptor.setSigningPublicKeyFilePath(DD_PUB_KEY_PATH);
             decryptor.decryptFile(file, decryptedFile);
             decryptedFilePath = decryptedFile.getAbsolutePath();
 
@@ -419,12 +540,19 @@ public class GUIForm {
     public static void main(String[] args) {
         GUIForm guiForm = new GUIForm();
         guiForm.frame = new JFrame(APPLICATION_NAME);
-        guiForm.fc.setCurrentDirectory(new File("."));
+        try {
+            ImageIcon imageIcon = new ImageIcon(imageFolder + File.separator + iconFileName);
+            guiForm.frame.setIconImage(imageIcon.getImage());
+        } catch (Exception e) {
+            // ignore loading icon fail
+            System.out.println(e.toString());
+        }
+        guiForm.fileChooser.setCurrentDirectory(new File("."));
         guiForm.enableEncryption();
         ButtonGroup btnGroup = new ButtonGroup();
         btnGroup.add(guiForm.encryptionRadioButton);
         btnGroup.add(guiForm.decryptionRadioButton);
-        guiForm.frame.add(guiForm.fc);
+        guiForm.frame.add(guiForm.fileChooser);
         guiForm.frame.setContentPane(guiForm.panel1);
         Dimension defaultDimension = new Dimension(700, 180);
         guiForm.frame.setMinimumSize(defaultDimension);
@@ -434,6 +562,7 @@ public class GUIForm {
         guiForm.decryptedPathTextField.setBorder(BorderFactory.createEmptyBorder());
         guiForm.frame.pack();
         guiForm.frame.setVisible(true);
+        validateMenuBar(guiForm);
         showKeyGenMenu(guiForm);
         showEncryptMenu(guiForm);
         showDecryptMenu(guiForm);
@@ -448,6 +577,9 @@ public class GUIForm {
             guiForm.frame.invalidate();
         } else {
             guiForm.keyGenerateButton.getParent().show();
+            Dimension dimension = new Dimension(700, 180);
+            guiForm.frame.setMinimumSize(dimension);
+            guiForm.frame.setSize(dimension);
         }
     }
 
@@ -465,6 +597,13 @@ public class GUIForm {
         } else {
             guiForm.decryptButton.getParent().setVisible(false);
         }
+    }
+
+    private static void validateViewingMenu(GUIForm guiForm) {
+        validateMenuBar(guiForm);
+        showKeyGenMenu(guiForm);
+        showEncryptMenu(guiForm);
+        showDecryptMenu(guiForm);
     }
 
     public void setData(KeyGenerationBean data) {
@@ -537,12 +676,37 @@ public class GUIForm {
      */
     private void $$$setupUI$$$() {
         panel1 = new JPanel();
-        panel1.setLayout(new com.intellij.uiDesigner.core.GridLayoutManager(5, 1, new Insets(0, 0, 0, 0), -1, -1));
+        panel1.setLayout(new com.intellij.uiDesigner.core.GridLayoutManager(4, 1, new Insets(0, 0, 0, 0), -1, -1));
         panel1.setPreferredSize(new Dimension(-1, -1));
         panel1.setBorder(BorderFactory.createTitledBorder(""));
+        menuBar = new JMenuBar();
+        menuBar.setLayout(new com.intellij.uiDesigner.core.GridLayoutManager(1, 1, new Insets(0, 0, 0, 0), -1, -1));
+        panel1.add(menuBar, new com.intellij.uiDesigner.core.GridConstraints(0, 0, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_NORTH, com.intellij.uiDesigner.core.GridConstraints.FILL_HORIZONTAL, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, null, null, null, 0, false));
+        final JMenu menu1 = new JMenu();
+        menu1.setLayout(new FlowLayout(FlowLayout.CENTER, 5, 5));
+        menu1.setArmed(false);
+        menu1.setText("File");
+        menu1.setMnemonic('F');
+        menu1.setDisplayedMnemonicIndex(0);
+        menuBar.add(menu1, new com.intellij.uiDesigner.core.GridConstraints(0, 0, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_WEST, com.intellij.uiDesigner.core.GridConstraints.FILL_NONE, 1, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, null, null, null, 0, false));
+        exportPublicKeyMenuItem = new JMenuItem();
+        exportPublicKeyMenuItem.setText("Export public key");
+        exportPublicKeyMenuItem.setMnemonic('P');
+        exportPublicKeyMenuItem.setDisplayedMnemonicIndex(7);
+        menu1.add(exportPublicKeyMenuItem);
+        viewPublicKeyMenuItem = new JMenuItem();
+        viewPublicKeyMenuItem.setText("View public key");
+        viewPublicKeyMenuItem.setMnemonic('V');
+        viewPublicKeyMenuItem.setDisplayedMnemonicIndex(0);
+        menu1.add(viewPublicKeyMenuItem);
+        generateNewKeyMenuItem = new JMenuItem();
+        generateNewKeyMenuItem.setText("Generate new key");
+        generateNewKeyMenuItem.setMnemonic('G');
+        generateNewKeyMenuItem.setDisplayedMnemonicIndex(0);
+        menu1.add(generateNewKeyMenuItem);
         final JPanel panel2 = new JPanel();
         panel2.setLayout(new com.intellij.uiDesigner.core.GridLayoutManager(5, 2, new Insets(0, 0, 0, 0), -1, -1));
-        panel1.add(panel2, new com.intellij.uiDesigner.core.GridConstraints(0, 0, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_NORTH, com.intellij.uiDesigner.core.GridConstraints.FILL_HORIZONTAL, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, null, null, null, 0, false));
+        panel1.add(panel2, new com.intellij.uiDesigner.core.GridConstraints(1, 0, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_NORTH, com.intellij.uiDesigner.core.GridConstraints.FILL_HORIZONTAL, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, null, null, null, 0, false));
         panel2.setBorder(BorderFactory.createTitledBorder("Key Generation"));
         final JLabel label1 = new JLabel();
         label1.setText("Identity");
@@ -588,6 +752,8 @@ public class GUIForm {
         encryptionRadioButton = new JRadioButton();
         encryptionRadioButton.setSelected(true);
         encryptionRadioButton.setText("Encryption");
+        encryptionRadioButton.setMnemonic('E');
+        encryptionRadioButton.setDisplayedMnemonicIndex(0);
         panel3.add(encryptionRadioButton, new com.intellij.uiDesigner.core.GridConstraints(0, 0, 1, 3, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_WEST, com.intellij.uiDesigner.core.GridConstraints.FILL_NONE, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, null, null, null, 0, false));
         encryptFileChooseButton = new JButton();
         encryptFileChooseButton.setText("...");
@@ -601,7 +767,7 @@ public class GUIForm {
         panel3.add(encryptedPathTextField, new com.intellij.uiDesigner.core.GridConstraints(3, 1, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_WEST, com.intellij.uiDesigner.core.GridConstraints.FILL_HORIZONTAL, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_WANT_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, null, new Dimension(150, -1), null, 0, false));
         final JPanel panel4 = new JPanel();
         panel4.setLayout(new com.intellij.uiDesigner.core.GridLayoutManager(5, 3, new Insets(0, 0, 0, 0), -1, -1));
-        panel1.add(panel4, new com.intellij.uiDesigner.core.GridConstraints(4, 0, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_BOTH, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_WANT_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, null, null, null, 0, false));
+        panel1.add(panel4, new com.intellij.uiDesigner.core.GridConstraints(3, 0, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_BOTH, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_WANT_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, null, null, null, 0, false));
         panel4.setBorder(BorderFactory.createTitledBorder(""));
         final JLabel label7 = new JLabel();
         label7.setText("File path");
@@ -621,6 +787,8 @@ public class GUIForm {
         panel4.add(decryptFileChooseButton, new com.intellij.uiDesigner.core.GridConstraints(1, 2, 1, 1, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_CENTER, com.intellij.uiDesigner.core.GridConstraints.FILL_HORIZONTAL, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_FIXED, new Dimension(100, -1), null, null, 0, false));
         decryptionRadioButton = new JRadioButton();
         decryptionRadioButton.setText("Decryption");
+        decryptionRadioButton.setMnemonic('D');
+        decryptionRadioButton.setDisplayedMnemonicIndex(0);
         panel4.add(decryptionRadioButton, new com.intellij.uiDesigner.core.GridConstraints(0, 0, 1, 3, com.intellij.uiDesigner.core.GridConstraints.ANCHOR_WEST, com.intellij.uiDesigner.core.GridConstraints.FILL_NONE, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_SHRINK | com.intellij.uiDesigner.core.GridConstraints.SIZEPOLICY_CAN_GROW, null, null, null, 0, false));
         decryptedPathTextField = new JTextField();
         decryptedPathTextField.setEditable(false);
